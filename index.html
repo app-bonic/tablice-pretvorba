@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSV ↔ Excel ↔ JSON</title>
+<meta name="description" content="Pretvorba tablica između CSV-a, Excela (XLSX, XLS, ODS) i JSON-a s pregledom. Hrvatski znakovi i OIB-ovi s vodećim nulama ostaju ispravni. Sve u pregledniku.">
+<link rel="icon" href="zajednicko/logo.svg">
+<link rel="stylesheet" href="zajednicko/app-bonic.css">
+<style>
+  .ulaz { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 900px) { .ulaz { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  .ulaz textarea { min-height: 150px; font-size: 13px; }
+  .red-opcija { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: end; }
+  .red-opcija .polje { min-width: 170px; }
+  .izlazi { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .izlaz { border: 1px solid var(--crta); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; background: var(--polje); }
+  .izlaz h3 { font-size: 15px; }
+  .izlaz p { font-size: 13px; color: var(--blijedo); }
+  .izlaz .gumbi { margin-top: auto; }
+  .listovi { display: flex; flex-wrap: wrap; gap: 6px; }
+  .listovi button { font-size: 13px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--crta); background: var(--plo); cursor: pointer; }
+  .listovi button[aria-pressed="true"] { background: var(--tekst); color: var(--bg); border-color: var(--tekst); }
+  .tablica td { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+  .tablica td.br, .tablica th.br { color: var(--blijedo); text-align: right; background: var(--polje); position: sticky; left: 0; }
+</style>
+</head>
+<body data-alat="tablice-pretvorba">
+<header class="ab-vrh"></header>
+
+<main class="ab-omot">
+  <section class="ab-uvod">
+    <span class="ab-ikona"><span data-ik="tablica"></span></span>
+    <div>
+      <h1>CSV ↔ Excel ↔ JSON</h1>
+      <p>Otvori CSV, Excel (XLSX, XLS, ODS) ili JSON i spremi u bilo koji od tih formata. Stari CSV-ovi u Windows-1250 kodiranju se prepoznaju, a OIB-ovi i šifre s vodećim nulama ostaju netaknuti.</p>
+    </div>
+  </section>
+
+  <section class="kartica">
+    <div class="ulaz">
+      <div class="dropzona" id="drop"><span data-ik="upload"></span><b>Ubaci datoteku</b><span>CSV, TSV, TXT, XLSX, XLS, ODS, JSON</span></div>
+      <div class="polje"><label for="zalijepi">…ili zalijepi podatke <small>CSV, iz Excela ili JSON</small></label><textarea id="zalijepi" class="mono" placeholder="ime;prezime;OIB&#10;Ivan;Horvat;01234567890"></textarea></div>
+    </div>
+    <div class="red-opcija" style="margin-top:14px">
+      <div class="polje"><label for="razdjelnik">Razdjelnik u CSV-u</label>
+        <select id="razdjelnik"><option value="auto">Prepoznaj sam</option><option value=";">Točka-zarez ;</option><option value=",">Zarez ,</option><option value="&#9;">Tabulator</option><option value="|">Okomita crta |</option></select></div>
+      <label class="kvacica"><input type="checkbox" id="kaoTekst" checked><span>Vrijednosti iz CSV-a čuvaj kao tekst (vodeće nule, datumi)</span></label>
+      <label class="kvacica"><input type="checkbox" id="zaglavlje" checked><span>Prvi redak su nazivi stupaca</span></label>
+    </div>
+  </section>
+
+  <div id="rezultat" hidden>
+    <section class="kartica" style="margin-top:16px">
+      <h2 id="naslovPregleda">Pregled</h2>
+      <div class="listovi" id="listovi" style="margin-bottom:10px"></div>
+      <div class="tablica-omot"><table class="tablica" id="tablica"></table></div>
+      <p class="napomena" id="napomenaPregleda" style="margin-top:8px"></p>
+    </section>
+
+    <section class="kartica" style="margin-top:16px">
+      <h2>Spremi kao</h2>
+      <div class="polje" style="max-width:340px;margin-bottom:12px"><label for="ime">Naziv datoteke (bez nastavka)</label><input id="ime" value="tablica"></div>
+      <div class="izlazi">
+        <div class="izlaz"><h3>Excel (.xlsx)</h3><p>Svi listovi iz izvora, stupci automatske širine.</p><div class="gumbi"><button type="button" class="gumb glavni" data-van="xlsx"><span data-ik="preuzmi"></span>XLSX</button><button type="button" class="gumb" data-van="ods">ODS</button></div></div>
+        <div class="izlaz"><h3>CSV</h3><p>Samo odabrani list. Za hrvatski Excel koristi točku-zarez.</p>
+          <select id="csvRazdjelnik"><option value=";">Razdjelnik ; (hrvatski Excel)</option><option value=",">Razdjelnik , (međunarodno)</option><option value="&#9;">Tabulator (TSV)</option></select>
+          <div class="gumbi"><button type="button" class="gumb glavni" data-van="csv"><span data-ik="preuzmi"></span>CSV</button><button type="button" class="gumb" data-kopiraj="csv"><span data-ik="kopiraj"></span>Kopiraj</button></div></div>
+        <div class="izlaz"><h3>JSON</h3><p>Odabrani list kao popis objekata (ili redaka).</p>
+          <select id="jsonOblik"><option value="objekti">Popis objekata { stupac: vrijednost }</option><option value="redovi">Popis redaka [ … ]</option></select>
+          <div class="gumbi"><button type="button" class="gumb glavni" data-van="json"><span data-ik="preuzmi"></span>JSON</button><button type="button" class="gumb" data-kopiraj="json"><span data-ik="kopiraj"></span>Kopiraj</button></div></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="ab-dno"></footer>
+<script src="zajednicko/app-bonic.js"></script>
+<script src="lib/xlsx.full.min.js"></script>
+<script>
+'use strict';
+const { $, $$, esc, obavijest, spremi, kopiraj, dropzona } = AB;
+let wb = null, list = '', izvor = null;   // izvor: { vrsta: 'tekst'|'binarno', podaci, ime }
+
+function dekodiraj(buf) {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf).replace(/^﻿/, ''); }
+  catch { return new TextDecoder('windows-1250').decode(buf); }
+}
+function razdjelnik(tekst) {
+  const r = $('#razdjelnik').value;
+  if (r !== 'auto') return r;
+  const redovi = tekst.split(/\r?\n/).filter(Boolean).slice(0, 10);
+  let najbolji = ',', max = -1;
+  for (const z of [';', ',', '\t', '|']) {
+    const n = redovi.map(l => l.split(z).length - 1);
+    const dosljedno = n.every(x => x === n[0]) ? 2 : 1;
+    const bod = (n[0] || 0) * dosljedno;
+    if (bod > max) { max = bod; najbolji = z; }
+  }
+  return najbolji;
+}
+const izravnaj = (o, pref = '', van = {}) => {
+  for (const [k, v] of Object.entries(o)) {
+    const kk = pref ? pref + '.' + k : k;
+    if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) izravnaj(v, kk, van);
+    else van[kk] = Array.isArray(v) ? JSON.stringify(v) : v;
+  }
+  return van;
+};
+
+function izTeksta(tekst) {
+  const t = tekst.trim();
+  if (!t) return null;
+  if (/^[[{]/.test(t)) {
+    try {
+      let j = JSON.parse(t);
+      if (!Array.isArray(j)) j = Array.isArray(Object.values(j)[0]) ? Object.values(j)[0] : [j];
+      const knjiga = XLSX.utils.book_new();
+      const ws = Array.isArray(j[0]) ? XLSX.utils.aoa_to_sheet(j) : XLSX.utils.json_to_sheet(j.map(x => (x && typeof x === 'object') ? izravnaj(x) : { vrijednost: x }));
+      XLSX.utils.book_append_sheet(knjiga, ws, 'Podaci');
+      return knjiga;
+    } catch (e) { obavijest('JSON nije ispravan: ' + e.message); return null; }
+  }
+  return XLSX.read(tekst, { type: 'string', FS: razdjelnik(tekst), raw: $('#kaoTekst').checked, dense: false, codepage: 65001 });
+}
+
+async function ucitajDatoteku([f]) {
+  if (!f) return;
+  const buf = new Uint8Array(await f.arrayBuffer());
+  const ime = f.name.replace(/\.[^.]+$/, '');
+  if (/\.(csv|tsv|txt|json)$/i.test(f.name) || f.type.startsWith('text/') || f.type === 'application/json') izvor = { vrsta: 'tekst', podaci: dekodiraj(buf), ime };
+  else izvor = { vrsta: 'binarno', podaci: buf, ime };
+  $('#zalijepi').value = '';
+  $('#ime').value = ime;
+  obradi();
+}
+
+function obradi() {
+  try {
+    if (!izvor) { wb = null; return prikazi(); }
+    wb = izvor.vrsta === 'tekst' ? izTeksta(izvor.podaci) : XLSX.read(izvor.podaci, { type: 'array', cellDates: true });
+  } catch (e) { wb = null; obavijest('Datoteka se ne može pročitati: ' + e.message); }
+  list = wb?.SheetNames[0] || '';
+  prikazi();
+}
+
+function prikazi() {
+  $('#rezultat').hidden = !wb;
+  if (!wb) return;
+  $('#listovi').innerHTML = wb.SheetNames.length > 1 ? wb.SheetNames.map(n => `<button type="button" aria-pressed="${n === list}" data-list="${esc(n)}">${esc(n)}</button>`).join('') : '';
+  const redovi = XLSX.utils.sheet_to_json(wb.Sheets[list], { header: 1, raw: false, defval: '' });
+  const stupaca = Math.max(0, ...redovi.map(r => r.length));
+  const prikaz = redovi.slice(0, 200);
+  const zag = $('#zaglavlje').checked;
+  const glava = zag && prikaz.length ? prikaz[0] : Array.from({ length: stupaca }, (_, i) => XLSX.utils.encode_col(i));
+  const tijelo = zag ? prikaz.slice(1) : prikaz;
+  $('#tablica').innerHTML = `<thead><tr><th class="br">#</th>${Array.from({ length: stupaca }, (_, i) => `<th>${esc(glava[i] ?? '')}</th>`).join('')}</tr></thead>
+    <tbody>${tijelo.map((r, i) => `<tr><td class="br">${i + 1}</td>${Array.from({ length: stupaca }, (_, j) => `<td title="${esc(r[j] ?? '')}">${esc(r[j] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody>`;
+  const ukupno = redovi.length - (zag ? 1 : 0);
+  $('#naslovPregleda').textContent = `Pregled — ${Math.max(0, ukupno)} ${AB.mn(ukupno, 'redak', 'retka', 'redaka')}, ${stupaca} ${AB.mn(stupaca, 'stupac', 'stupca', 'stupaca')}`;
+  $('#napomenaPregleda').textContent = redovi.length > 200 ? 'Prikazano je prvih 200 redaka — preuzimanje sadrži sve.' : '';
+}
+
+function sadrzaj(vrsta) {
+  const ws = wb.Sheets[list];
+  if (vrsta === 'csv') return XLSX.utils.sheet_to_csv(ws, { FS: $('#csvRazdjelnik').value, blankrows: false });
+  const zag = $('#zaglavlje').checked;
+  const podaci = $('#jsonOblik').value === 'redovi' || !zag
+    ? XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true })
+    : XLSX.utils.sheet_to_json(ws, { defval: '', raw: true });
+  return JSON.stringify(podaci, null, 2);
+}
+function sirineStupaca(ws) {
+  const r = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+  const n = Math.max(0, ...r.map(x => x.length));
+  ws['!cols'] = Array.from({ length: n }, (_, j) => ({ wch: Math.min(60, Math.max(6, ...r.slice(0, 500).map(x => String(x[j] ?? '').length + 2))) }));
+}
+
+document.addEventListener('click', e => {
+  const l = e.target.closest('[data-list]');
+  if (l) { list = l.dataset.list; prikazi(); return; }
+  const v = e.target.closest('[data-van]'), k = e.target.closest('[data-kopiraj]');
+  const ime = ($('#ime').value.trim() || 'tablica').replace(/[\\/:*?"<>|]/g, '-');
+  if (v) {
+    const f = v.dataset.van;
+    if (f === 'xlsx' || f === 'ods') {
+      wb.SheetNames.forEach(n => sirineStupaca(wb.Sheets[n]));
+      XLSX.writeFile(wb, `${ime}.${f}`, { bookType: f, compression: true });
+    } else if (f === 'csv') spremi(new Blob(['﻿' + sadrzaj('csv')], { type: 'text/csv;charset=utf-8' }), ime + '.csv');
+    else spremi(new Blob([sadrzaj('json')], { type: 'application/json' }), ime + '.json');
+  }
+  if (k) kopiraj(sadrzaj(k.dataset.kopiraj));
+});
+
+let tajmer;
+$('#zalijepi').addEventListener('input', () => {
+  clearTimeout(tajmer);
+  tajmer = setTimeout(() => { izvor = $('#zalijepi').value.trim() ? { vrsta: 'tekst', podaci: $('#zalijepi').value, ime: 'tablica' } : null; obradi(); }, 250);
+});
+['razdjelnik', 'kaoTekst'].forEach(id => $('#' + id).addEventListener('change', obradi));
+$('#zaglavlje').addEventListener('change', prikazi);
+dropzona($('#drop'), ucitajDatoteku, { accept: '.csv,.tsv,.txt,.xlsx,.xls,.xlsm,.ods,.json', visestruko: false });
+</script>
+</body>
+</html>
